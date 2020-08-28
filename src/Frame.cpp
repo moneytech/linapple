@@ -70,12 +70,12 @@ static bool g_bAppActive = false;
 
 static int buttondown = -1;
 
-BOOL fullscreen = 0;
-BOOL g_WindowResized;  // if we do not have a normal window size
+bool fullscreen = 0;
+bool g_WindowResized;  // if we do not have a normal window size
 
-static BOOL usingcursor = 0;
+static bool usingcursor = 0;
 
-void DrawStatusArea(BOOL drawflags);
+void DrawStatusArea(int drawflags);
 
 void ProcessButtonClick(int button, int mod); // handle control buttons(F1-..F12) events
 
@@ -85,7 +85,7 @@ void SetFullScreenMode();
 
 void SetNormalMode();
 
-void SetUsingCursor(BOOL);
+void SetUsingCursor(bool);
 
 bool g_bScrollLock_FullSpeed = false;  // no in full speed!
 
@@ -165,19 +165,19 @@ void FrameShowHelpScreen(int sx, int sy) // sx, sy - sizes of current window (sc
                                         " Ctrl+F10 - Hot Reset (Control+Reset)",
                                         "      F12 - Quit",
                                         "",
-                                        "       F3 - Load floppy disk 1 (Slot 6, Drive 1)",
-                                        "       F4 - Load floppy disk 2 (Slot 6, Drive 2)",
+                                        "    F3/F4 - Load floppy disk 1/2 (Slot 6, Drive 1/2)",
                                         "       F5 - Swap floppy disks",
-                                        " Shift+F3 - Attach hard drive 1 (Slot 7, Drive 1)",
-                                        " Shift+F4 - Attach hard drive 2 (Slot 7, Drive 2)",
+                                        " Shift+F3/F4 - Attach hard drive 1/2 (Slot 7, Drive 1/2)",
                                         "",
                                         "       F6 - Toggle fullscreen mode",
                                         " Shift+F6 - Toggle character set (keyboard rocker switch)",
+                                        "       F7 - Toggle debugging view",
                                         "       F8 - Take screenshot",
                                         " Shift+F8 - Save runtime changes to configuration file",
                                         "       F9 - Cycle through various video modes",
                                         " Shift+F9 - Budget video, for smoother music/audio",
                                         "  F10/F11 - Load/save snapshot file",
+                                        "",
                                         "       Pause - Pause/resume emulator",
                                         " Scroll Lock - Toggle full speed",
                                         "  Numpad +/-/* - Increase/Decrease/Normal speed"};
@@ -224,7 +224,8 @@ void FrameShowHelpScreen(int sx, int sy) // sx, sy - sizes of current window (sc
 
   int Help_TopX = int(45 * facy);
   for (int i = 3; i < MAX_LINES; i++) {
-    font_print(4, Help_TopX + (i - 3) * 15 * facy, (char *) HelpStrings[i], screen, 1.5 * facx,
+    if (HelpStrings[i])
+      font_print(4, Help_TopX + (i - 3) * 15 * facy, (char *) HelpStrings[i], screen, 1.5 * facx,
                1.5 * facy); // show keys
   }
 
@@ -367,21 +368,33 @@ void FrameDispatchMessage(SDL_Event *e) {// process given SDL event
       } else if (mysym == SDLK_SCROLLOCK) {
         g_bScrollLock_FullSpeed = !g_bScrollLock_FullSpeed; // turn on/off full speed?
       } else if ((g_nAppMode == MODE_RUNNING) || (g_nAppMode == MODE_LOGO) || (g_nAppMode == MODE_STEPPING)) {
+        g_bDebuggerEatKey = false;
         // Note about Alt Gr (Right-Alt):
         // . WM_KEYDOWN[Left-Control], then:
         // . WM_KEYDOWN[Right-Alt]
-        BOOL autorep = 0; //previous key was pressed? 30bit of lparam
-        BOOL extended = (mysym >= SDLK_UP); // 24bit of lparam - is an extended key, what is it???
+        bool autorep = 0; //previous key was pressed? 30bit of lparam
+        bool extended = (mysym >= SDLK_UP); // 24bit of lparam - is an extended key, what is it???
         if (mymod & KMOD_RCTRL)     // GPH: Update trim?
         {
           JoyUpdateTrimViaKey(mysym);
         } else {
           // Regular joystick movement
-          if ((!JoyProcessKey(mysym, extended, TRUE, autorep)) && (g_nAppMode != MODE_LOGO)) {
+          if ((!JoyProcessKey(mysym, extended, true, autorep)) && (g_nAppMode != MODE_LOGO)) {
             KeybQueueKeypress(mysym, NOT_ASCII);
           }
         }
       } else if (g_nAppMode == MODE_DEBUG) {
+        if (((mymod & (KMOD_LSHIFT|KMOD_RSHIFT|KMOD_CAPS))>0)&&
+            ((mysym>='a')&&(mysym<='z')))
+        {
+          // convert to upper case when any shift key was pressed
+          mysym += 'A'-'a';
+        }
+        else
+        {
+          KeybUpdateCtrlShiftStatus();
+          mysym = KeybDecodeKey(mysym);
+        }
         DebuggerProcessKey(mysym);
       }
       break;
@@ -396,7 +409,7 @@ void FrameDispatchMessage(SDL_Event *e) {// process given SDL event
         KeybToggleCapsLock();
       } else {  // Need to know what "extended" means, and what's so special about SDLK_UP?
         if (myscancode) { // GPH: Checking scan codes tells us if a key was REALLY released.
-          JoyProcessKey(mysym, (mysym >= SDLK_UP && mysym <= SDLK_LEFT), FALSE, 0);
+          JoyProcessKey(mysym, (mysym >= SDLK_UP && mysym <= SDLK_LEFT), false, 0);
         }
       }
       break;
@@ -406,6 +419,9 @@ void FrameDispatchMessage(SDL_Event *e) {// process given SDL event
         if (buttondown == -1) {
           x = e->button.x;
           y = e->button.y;
+          if (g_nAppMode == MODE_DEBUG)
+            DebuggerMouseClick(x, y);
+          else
           if (usingcursor) {
             KeybUpdateCtrlShiftStatus(); // if either of ALT, SHIFT or CTRL is pressed
             if (g_bShiftKey | g_bCtrlKey) {
@@ -418,12 +434,11 @@ void FrameDispatchMessage(SDL_Event *e) {// process given SDL event
               }
             }
           } // we do not use mouse
-          else if (
-            (((g_nAppMode == MODE_RUNNING) || (g_nAppMode == MODE_STEPPING))) ||
-            (sg_Mouse.Active())) {
+          else
+          if ((((g_nAppMode == MODE_RUNNING) || (g_nAppMode == MODE_STEPPING))) ||
+              (sg_Mouse.Active())) {
             SetUsingCursor(1); // capture cursor
           }
-          DebuggerMouseClick(x, y);
         }
       } // If left mouse button down
       else if (e->button.button == SDL_BUTTON_RIGHT) {
@@ -481,9 +496,6 @@ void FrameDispatchMessage(SDL_Event *e) {// process given SDL event
 
 bool PSP_SaveStateSelectImage(bool saveit)
 {
-  // Dialog for save or load StateImage
-  // if saveit == TRUE, then pick image for saving
-  //  else pick an image for loading
   static int fileIndex = 0;    // file index will be remembered for current dir
   static int backdx = 0;  // reserve
   static int dirdx = 0;  // reserve for dirs
@@ -633,6 +645,16 @@ void ProcessButtonClick(int button, int mod)
       break;
 
     case BTN_DEBUG:  // F7 - debug mode - not implemented yet? Please, see README about it. --bb
+      if (g_nAppMode != MODE_DEBUG)
+      {
+        DebugBegin();
+        SetUsingCursor(0);
+      }
+      else
+      if (g_nAppMode == MODE_DEBUG)
+      {
+        g_nAppMode = MODE_RUNNING;
+      }
       break;
 
     case BTN_SETUP:  // setup is in conf file - linapple.conf.
@@ -663,9 +685,19 @@ void ProcessButtonClick(int button, int mod)
           g_videotype = 0;
         }
         VideoReinitialize();
-        if ((g_nAppMode != MODE_LOGO) || ((g_nAppMode == MODE_DEBUG) && (g_bDebuggerViewingAppleOutput))) {
-          VideoRedrawScreen();
-          g_bDebuggerViewingAppleOutput = true;
+        if (g_nAppMode != MODE_LOGO)
+        {
+          if (g_nAppMode == MODE_DEBUG)
+          {
+            unsigned int debugVideoMode;
+            if (DebugGetVideoMode(&debugVideoMode)) {
+              VideoRefreshScreen();
+            }
+          }
+          else
+          {
+            VideoRefreshScreen();
+          }
         }
       }
       break;
@@ -726,7 +758,8 @@ void SetFullScreenMode() {
   if (!bIamFullScreened) {
     bIamFullScreened = true;
     SDL_WM_ToggleFullScreen(screen);
-    SDL_ShowCursor(SDL_DISABLE);
+    if (g_nAppMode != MODE_DEBUG)
+      SDL_ShowCursor(SDL_DISABLE);
   }
 }
 
@@ -739,15 +772,21 @@ void SetNormalMode()
       SDL_ShowCursor(SDL_ENABLE);
     } // show mouse cursor if not use it
   }
+  else
+  if (g_nAppMode == MODE_DEBUG)
+  {
+    SDL_ShowCursor(SDL_ENABLE);
+    SDL_WM_GrabInput(SDL_GRAB_OFF);
+  }
 }
 
-void SetUsingCursor(BOOL newvalue) {
+void SetUsingCursor(bool newvalue) {
   usingcursor = newvalue;
   if (usingcursor) { // Hide mouse cursor and grab input (mouse and keyboard)
     SDL_ShowCursor(SDL_DISABLE);
     SDL_WM_GrabInput(SDL_GRAB_ON);
   } else { // On the contrary - show mouse cursor and ungrab input
-    if (!bIamFullScreened) {
+    if ((!bIamFullScreened)||(g_nAppMode == MODE_DEBUG)) {
       SDL_ShowCursor(SDL_ENABLE);
     }  // Show cursor if not in fullscreen mode
     SDL_WM_GrabInput(SDL_GRAB_OFF);

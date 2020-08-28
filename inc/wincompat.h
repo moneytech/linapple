@@ -52,14 +52,6 @@ typedef int INT32;
 #endif
 #endif
 
-#ifndef FALSE
-#define FALSE               0
-#endif
-
-#ifndef TRUE
-#define TRUE                1
-#endif
-
 #ifndef IN
 #define IN
 #endif
@@ -200,9 +192,11 @@ typedef struct tagPOINT {
 #define _tcsset strset
 
 #define _tcscmp strcmp
-#define _tcsicmp stricmp
+#define _tcsicmp strcmp
 #define _tcsncmp strncmp
 #define _tcsnicmp strnicmp
+#define _tcstoul strtoul
+#define _tcstol strtol
 
 /* Note that _mbscat, _mbscpy and _mbsdup are functionally equivalent to
     strcat, strcpy and strdup, respectively. */
@@ -221,8 +215,12 @@ typedef struct tagPOINT {
 #define ZeroMemory(Destination, Length) memset((Destination),0,(Length))
 
 #define GetTickCount SDL_GetTicks
-#define _ASSERT  assert
 
+#ifdef _DEBUG
+  #define _ASSERT  assert
+#else
+  #define _ASSERT(x)
+#endif
 
 #ifdef __cplusplus
 }

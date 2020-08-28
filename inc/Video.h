@@ -12,6 +12,17 @@ enum VIDEOTYPE {
   VT_MONO_WHITE,
   VT_NUM_MODES
 };
+
+enum VideoFlag_e {
+  VF_80COL = 0x00000001,
+  VF_DHIRES = 0x00000002,
+  VF_HIRES = 0x00000004,
+  VF_MASK2 = 0x00000008,
+  VF_MIXED = 0x00000010,
+  VF_PAGE2 = 0x00000020,
+  VF_TEXT = 0x00000040
+};
+
 /*long*/
 enum AppleFont_e {
   // 40-Column mode is 1x Zoom (default)
@@ -34,15 +45,88 @@ enum AppleFont_e {
   APPLE_FONT_Y_APPLE_40COL = 512, // ][
 };
 
+// STANDARD /*WINDOWS*/ LINUX COLORS
+#define  CREAM            0xF6
+#define  MEDIUM_GRAY      0xF7
+#define  DARK_GRAY        0xF8
+#define  RED              0xF9
+#define  GREEN            0xFA
+#define  YELLOW           0xFB
+#define  BLUE             0xFC
+#define  MAGENTA          0xFD
+#define  CYAN             0xFE
+#define  WHITE            0xFF
+
+#define RGB(r, g, b)          ((unsigned int)(((unsigned char)(r)|((unsigned short)((unsigned char)(g))<<8))|(((unsigned int)(unsigned char)(b))<<16)))
+
+enum Color_Palette_Index_e {
+  // Really need to have Quarter Green and Quarter Blue for Hi-Res
+  BLACK,
+  DARK_RED,
+  DARK_GREEN,       // Half Green
+  DARK_YELLOW,
+  DARK_BLUE,        // Half Blue
+  DARK_MAGENTA,
+  DARK_CYAN,
+  LIGHT_GRAY,
+  MONEY_GREEN,
+  SKY_BLUE,
+
+  // OUR CUSTOM COLORS
+  DEEP_RED,
+  LIGHT_BLUE,
+  BROWN,
+  ORANGE,
+  PINK,
+  AQUA,
+
+  // CUSTOM HGR COLORS (don't change order) - For tv emulation g_nAppMode
+  HGR_BLACK,
+  HGR_WHITE,
+  HGR_BLUE,
+  HGR_RED,
+  HGR_GREEN,
+  HGR_MAGENTA,
+  HGR_GREY1,
+  HGR_GREY2,
+  HGR_YELLOW,
+  HGR_AQUA,
+  HGR_PURPLE,
+  HGR_PINK,
+
+  // USER CUSTOMIZABLE COLOR
+  MONOCHROME_CUSTOM,
+
+  // Pre-set "Monochromes"
+  MONOCHROME_AMBER,
+  MONOCHROME_GREEN,
+  MONOCHROME_WHITE,
+
+  DARKER_YELLOW,
+  DARKEST_YELLOW,
+  LIGHT_SKY_BLUE,
+  DARKER_SKY_BLUE,
+  DEEP_SKY_BLUE,
+  DARKER_CYAN,
+  DARKEST_CYAN,
+  HALF_ORANGE,
+  DARKER_BLUE,
+  DARKER_GREEN,
+  DARKEST_GREEN,
+  LIGHTEST_GRAY,
+  NUM_COLOR_PALETTE
+};
+
 // Globals
-extern INT32 g_iStatusCycle; // cycler for status panel showing
+extern int g_iStatusCycle; // cycler for status panel showing
 
-extern BOOL g_ShowLeds; // if we should show drive leds
+extern bool g_ShowLeds; // if we should show drive leds
 
-extern BOOL graphicsmode;
-extern COLORREF monochrome;
-extern DWORD g_videotype;
-extern DWORD g_singlethreaded;
+extern bool graphicsmode;
+extern unsigned int monochrome;
+extern unsigned int g_videotype;
+extern unsigned int g_uVideoMode;
+extern unsigned int g_singlethreaded;
 extern pthread_mutex_t video_draw_mutex; // drawing mutex for writing to SDL surface
 
 // Surfaces for drawing
@@ -56,11 +140,11 @@ extern SDL_Surface *g_origscreen; // reserved for stretching
 
 void CreateColorMixMap();
 
-BOOL VideoApparentlyDirty();
+bool VideoApparentlyDirty();
 
 void VideoBenchmark();
 
-void VideoCheckPage(BOOL);
+void VideoCheckPage(bool);
 
 void VideoChooseColor();
 
@@ -70,7 +154,7 @@ void VideoDrawLogoBitmap(/* HDC hDstDC */);
 
 void VideoDisplayLogo();
 
-BOOL VideoHasRefreshed();
+bool VideoHasRefreshed();
 
 void VideoInitialize();
 
@@ -80,7 +164,7 @@ void VideoSetNextScheduledUpdate();
 
 void VideoRedrawScreen();
 
-void VideoRefreshScreen();
+void VideoRefreshScreen(uint32_t uRedrawWholeScreenVideoMode =0, bool bRedrawWholeScreen=false);
 
 void VideoPerformRefresh();
 
@@ -88,22 +172,29 @@ void VideoReinitialize();
 
 void VideoResetState();
 
-WORD VideoGetScannerAddress(bool *pbVblBar_OUT, const DWORD uExecutedCycles);
+unsigned short VideoGetScannerAddress(bool *pbVblBar_OUT, const unsigned int uExecutedCycles);
 
-bool VideoGetVbl(DWORD uExecutedCycles);
+bool VideoGetVbl(unsigned int uExecutedCycles);
 
-void VideoUpdateVbl(DWORD dwCyclesThisFrame);
+void VideoUpdateVbl(unsigned int dwCyclesThisFrame);
 
 void VideoUpdateFlash();
 
-bool VideoGetSW80COL();
+bool VideoGetSW80COL(void);
+bool VideoGetSWDHIRES(void);
+bool VideoGetSWHIRES(void);
+bool VideoGetSW80STORE(void);
+bool VideoGetSWMIXED(void);
+bool VideoGetSWPAGE2(void);
+bool VideoGetSWTEXT(void);
+bool VideoGetSWAltCharSet(void);
 
-DWORD VideoGetSnapshot(SS_IO_Video *pSS);
+unsigned int VideoGetSnapshot(SS_IO_Video *pSS);
 
-DWORD VideoSetSnapshot(SS_IO_Video *pSS);
+unsigned int VideoSetSnapshot(SS_IO_Video *pSS);
 
-BYTE VideoCheckMode(WORD pc, WORD addr, BYTE bWrite, BYTE d, ULONG nCyclesLeft);
+unsigned char VideoCheckMode(unsigned short pc, unsigned short addr, unsigned char bWrite, unsigned char d, ULONG nCyclesLeft);
 
-BYTE VideoCheckVbl(WORD pc, WORD addr, BYTE bWrite, BYTE d, ULONG nCyclesLeft);
+unsigned char VideoCheckVbl(unsigned short pc, unsigned short addr, unsigned char bWrite, unsigned char d, ULONG nCyclesLeft);
 
-BYTE VideoSetMode(WORD pc, WORD addr, BYTE bWrite, BYTE d, ULONG nCyclesLeft);
+unsigned char VideoSetMode(unsigned short pc, unsigned short addr, unsigned char bWrite, unsigned char d, ULONG nCyclesLeft);
